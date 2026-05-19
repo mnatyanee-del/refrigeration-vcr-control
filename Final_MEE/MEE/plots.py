@@ -37,334 +37,160 @@ def _saturation_dome(fluid, n=80):
 # =========================================================================
 # P-h Diagram
 # =========================================================================
-def _state_hover(states, i):
-    """Hovertext for a state point."""
-    return (
-        f"<b>State {i}</b> ({states[i]['label']})<br>"
-        f"T = {states[i]['T_C']:.2f} °C<br>"
-        f"P = {states[i]['P_kPa']:.1f} kPa<br>"
-        f"h = {states[i]['h']:.2f} kJ/kg<br>"
-        f"s = {states[i]['s']:.4f} kJ/kg·K"
-    )
-
-
-def _critical_point(fluid):
-    """Return (T_crit [°C], P_crit [kPa], h_crit [kJ/kg], s_crit [kJ/kg·K])."""
-    from CoolProp.CoolProp import PropsSI as _P
-    T_crit = _P("Tcrit", fluid)
-    P_crit = _P("pcrit", fluid) / 1000
-    # h and s at critical point — use sat point just below crit
-    try:
-        h_crit = _P("H", "T", T_crit - 0.5, "Q", 0.5, fluid) / 1000
-        s_crit = _P("S", "T", T_crit - 0.5, "Q", 0.5, fluid) / 1000
-    except Exception:
-        h_crit = None
-        s_crit = None
-    return T_crit - 273.15, P_crit, h_crit, s_crit
-
-
-def _isobar_in_Ts(fluid, P_kPa, T_min_C=-40, T_max_C=80, n=40):
-    """Return (s, T) points along constant-P line for T-s diagram.
-       Crosses through 2-phase region using quality jump."""
-    P_Pa = P_kPa * 1000
-    T_sat = PropsSI("T", "P", P_Pa, "Q", 0, fluid)
-    s_list, T_list = [], []
-    # Subcooled liquid section: T_min → T_sat
-    T_sub = np.linspace(T_min_C + 273.15, T_sat - 0.01, n // 3)
-    for T in T_sub:
-        try:
-            s_list.append(PropsSI("S", "T", T, "P", P_Pa, fluid) / 1000)
-            T_list.append(T - 273.15)
-        except Exception:
-            pass
-    # Two-phase: horizontal at T_sat (q = 0 → 1)
-    s_f = PropsSI("S", "P", P_Pa, "Q", 0, fluid) / 1000
-    s_g = PropsSI("S", "P", P_Pa, "Q", 1, fluid) / 1000
-    s_list.append(s_f);   T_list.append(T_sat - 273.15)
-    s_list.append(s_g);   T_list.append(T_sat - 273.15)
-    # Superheat: T_sat → T_max
-    T_sup = np.linspace(T_sat + 0.01, T_max_C + 273.15, n // 2)
-    for T in T_sup:
-        try:
-            s_list.append(PropsSI("S", "T", T, "P", P_Pa, fluid) / 1000)
-            T_list.append(T - 273.15)
-        except Exception:
-            pass
-    return np.array(s_list), np.array(T_list)
-
-
-def _isotherm_in_Ph(fluid, T_C, P_low_kPa=50, P_high_kPa=5000, n=40):
-    """Return (h, P) points along constant-T line for P-h diagram."""
-    T_K = T_C + 273.15
-    h_list, P_list = [], []
-    try:
-        P_sat = PropsSI("P", "T", T_K, "Q", 0, fluid)
-    except Exception:
-        P_sat = None
-    # Subcool side (high P, low h, liquid)
-    if P_sat is not None and P_sat < P_high_kPa * 1000:
-        P_sub = np.geomspace(P_sat + 1, P_high_kPa * 1000, n // 2)
-        for P in P_sub:
-            try:
-                h_list.append(PropsSI("H", "T", T_K, "P", P, fluid) / 1000)
-                P_list.append(P / 1000)
-            except Exception:
-                pass
-        # Reverse to go high→low for continuity
-        h_list = h_list[::-1]; P_list = P_list[::-1]
-        # Saturated liquid point
-        h_list.append(PropsSI("H", "T", T_K, "Q", 0, fluid) / 1000)
-        P_list.append(P_sat / 1000)
-        # Saturated vapor point (horizontal in 2-phase)
-        h_list.append(PropsSI("H", "T", T_K, "Q", 1, fluid) / 1000)
-        P_list.append(P_sat / 1000)
-    # Superheat side (low P, high h, vapor)
-    if P_sat is not None:
-        P_sup = np.geomspace(P_sat - 1, P_low_kPa * 1000, n // 2)
-    else:
-        P_sup = np.geomspace(P_high_kPa * 1000, P_low_kPa * 1000, n)
-    for P in P_sup:
-        try:
-            h_list.append(PropsSI("H", "T", T_K, "P", P, fluid) / 1000)
-            P_list.append(P / 1000)
-        except Exception:
-            pass
-    return np.array(h_list), np.array(P_list)
-
-
-def _add_state_marker(fig, x, y, num, hover_text):
-    """Add a state point marker with number label."""
-    fig.add_trace(go.Scatter(
-        x=[x], y=[y], mode="markers+text",
-        marker=dict(size=10, color="yellow",
-                    line=dict(color="black", width=1.5)),
-        text=[f"<b>{num}</b>"], textposition="top right",
-        textfont=dict(size=11, color="black"),
-        hovertext=[hover_text], hoverinfo="text",
-        showlegend=False
-    ))
-
-
-# =========================================================================
-# P-h Diagram (Low/High style + CP + isotherms)
-# =========================================================================
 def plot_ph_diagram(result):
     states = result["states"]
-    fluid  = result["fluid"]
+    fluid = result["fluid"]
 
-    h_f, h_g, _, _, T_arr, P_arr = _saturation_dome(fluid)
-    T_crit_C, P_crit, h_crit, _ = _critical_point(fluid)
+    h_f, h_g, s_f, s_g, T_arr, P_arr = _saturation_dome(fluid)
 
     fig = go.Figure()
-
-    # ---- Saturation dome (lines only, no fill) ----
+    # Saturation dome
     fig.add_trace(go.Scatter(
         x=h_f, y=P_arr, mode="lines", name="Sat. liquid",
-        line=dict(color="black", width=1.5), hoverinfo="skip"
+        line=dict(color="black", width=1.5),
+        hovertemplate="h=%{x:.1f}<br>P=%{y:.0f}<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
         x=h_g, y=P_arr, mode="lines", name="Sat. vapor",
-        line=dict(color="black", width=1.5), hoverinfo="skip"
+        line=dict(color="black", width=1.5),
+        hovertemplate="h=%{x:.1f}<br>P=%{y:.0f}<extra></extra>"
     ))
 
-    # ---- Isotherms (constant T lines) ----
-    # Pick 4 representative temperatures including the operating ones
-    T_evap = states[1]["T_C"]
-    T_mid  = states[6]["T_C"]
-    T_cond = states[7]["T_C"]
-    T_choice = sorted({
-        round(T_evap, 1),
-        round(T_mid, 1),
-        round(T_cond, 1),
-        round((T_cond + T_crit_C) / 2, 1),
-    })
-    for j, T_C in enumerate(T_choice):
-        h_iso, P_iso = _isotherm_in_Ph(fluid, T_C)
-        if len(h_iso) > 2:
-            fig.add_trace(go.Scatter(
-                x=h_iso, y=P_iso, mode="lines",
-                line=dict(color="rgba(150,150,150,0.6)",
-                          width=1, dash="dot"),
-                name=f"T = {T_C:.0f} °C",
-                hoverinfo="skip",
-                showlegend=(j < 3),
-            ))
-
-    # ---- Cycle: Low side (blue) ----
+    # Low side: 11 → 1 → 2 → 3 → 4 → 5
     low_order = [11, 1, 2, 3, 4, 5]
     h_low = [states[i]["h"] for i in low_order]
     P_low = [states[i]["P_kPa"] for i in low_order]
+    text_low = [f"{i}" for i in low_order]
+    hover_low = [
+        f"<b>State {i}</b> ({states[i]['label']})<br>"
+        f"T={states[i]['T_C']:.2f}°C<br>"
+        f"P={states[i]['P_kPa']:.1f} kPa<br>"
+        f"h={states[i]['h']:.2f} kJ/kg<br>"
+        f"s={states[i]['s']:.4f} kJ/kg·K"
+        for i in low_order
+    ]
     fig.add_trace(go.Scatter(
-        x=h_low, y=P_low, mode="lines",
+        x=h_low, y=P_low, mode="lines+markers+text",
+        text=text_low, textposition="top center",
+        marker=dict(size=10, color="blue"),
         line=dict(color="blue", width=2.5),
-        name="Low side", hoverinfo="skip"
+        name="Low side", hovertext=hover_low, hoverinfo="text"
     ))
 
-    # ---- Cycle: High side (red) ----
+    # High side: 6 → 7 → 8 → 9 → 10
     high_order = [6, 7, 8, 9, 10]
     h_high = [states[i]["h"] for i in high_order]
     P_high = [states[i]["P_kPa"] for i in high_order]
+    text_high = [f"{i}" for i in high_order]
+    hover_high = [
+        f"<b>State {i}</b> ({states[i]['label']})<br>"
+        f"T={states[i]['T_C']:.2f}°C<br>"
+        f"P={states[i]['P_kPa']:.1f} kPa<br>"
+        f"h={states[i]['h']:.2f} kJ/kg<br>"
+        f"s={states[i]['s']:.4f} kJ/kg·K"
+        for i in high_order
+    ]
     fig.add_trace(go.Scatter(
-        x=h_high, y=P_high, mode="lines",
+        x=h_high, y=P_high, mode="lines+markers+text",
+        text=text_high, textposition="top center",
+        marker=dict(size=10, color="red", symbol="square"),
         line=dict(color="red", width=2.5),
-        name="High side", hoverinfo="skip"
+        name="High side", hovertext=hover_high, hoverinfo="text"
     ))
 
-    # Interface lines
+    # Interfaces
     fig.add_trace(go.Scatter(
         x=[states[5]["h"], states[6]["h"]],
         y=[states[5]["P_kPa"], states[6]["P_kPa"]],
-        mode="lines",
-        line=dict(color="green", width=2, dash="dash"),
-        name="5→6 interface", hoverinfo="skip"
+        mode="lines", line=dict(color="green", width=2, dash="dash"),
+        name="5→6 interface", showlegend=True
     ))
     fig.add_trace(go.Scatter(
         x=[states[10]["h"], states[11]["h"]],
         y=[states[10]["P_kPa"], states[11]["P_kPa"]],
-        mode="lines",
-        line=dict(color="purple", width=2, dash="dash"),
-        name="10→11 (EV-2)", hoverinfo="skip"
+        mode="lines", line=dict(color="purple", width=2, dash="dash"),
+        name="10→11 (EV-2)", showlegend=True
     ))
 
-    # ---- State point markers (yellow circles) ----
-    for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
-        _add_state_marker(fig, states[i]["h"], states[i]["P_kPa"],
-                          i, _state_hover(states, i))
-
-    # ---- Critical Point ----
-    if h_crit is not None:
-        fig.add_trace(go.Scatter(
-            x=[h_crit], y=[P_crit], mode="markers+text",
-            marker=dict(size=14, color="darkviolet", symbol="star",
-                        line=dict(color="black", width=1.5)),
-            text=["<b>CP</b>"], textposition="top right",
-            textfont=dict(size=12, color="darkviolet"),
-            name="Critical Point",
-            hovertext=(f"<b>Critical Point</b><br>"
-                       f"T = {T_crit_C:.2f} °C<br>"
-                       f"P = {P_crit:.1f} kPa<br>"
-                       f"h ≈ {h_crit:.1f} kJ/kg"),
-            hoverinfo="text"
-        ))
-
     fig.update_layout(
-        title=f"P-h Diagram — {fluid} | COP = {result['COP']:.2f}",
+        title=f"P-h Diagram — {result['fluid']} | COP = {result['COP']:.2f}",
         xaxis_title="Enthalpy h [kJ/kg]",
         yaxis_title="Pressure P [kPa]",
         yaxis_type="log",
         hovermode="closest",
         template="plotly_white",
-        height=600,
-        legend=dict(
-            yanchor="top", y=0.99,
-            xanchor="left", x=1.02,
-            bgcolor="rgba(255,255,255,0.85)",
-            bordercolor="gray", borderwidth=1,
-            font=dict(size=10)
-        ),
+        height=550,
     )
     return fig
 
 
 # =========================================================================
-# T-s Diagram (Low/High style + CP + isobars)
+# T-s Diagram
 # =========================================================================
 def plot_ts_diagram(result):
     states = result["states"]
-    fluid  = result["fluid"]
+    fluid = result["fluid"]
 
-    _, _, s_f, s_g, T_arr, _ = _saturation_dome(fluid)
-    T_crit_C, P_crit, _, s_crit = _critical_point(fluid)
+    h_f, h_g, s_f, s_g, T_arr, P_arr = _saturation_dome(fluid)
 
     fig = go.Figure()
-
-    # ---- Saturation dome (lines only) ----
     fig.add_trace(go.Scatter(
         x=s_f, y=T_arr, mode="lines", name="Sat. liquid",
-        line=dict(color="black", width=1.5), hoverinfo="skip"
+        line=dict(color="black", width=1.5)
     ))
     fig.add_trace(go.Scatter(
         x=s_g, y=T_arr, mode="lines", name="Sat. vapor",
-        line=dict(color="black", width=1.5), hoverinfo="skip"
+        line=dict(color="black", width=1.5)
     ))
 
-    # ---- Isobars (constant P lines) ----
-    P_evap = states[1]["P_kPa"]
-    P_mid  = states[6]["P_kPa"]
-    P_cond = states[7]["P_kPa"]
-    P_choice = sorted({
-        round(P_evap, 1),
-        round(P_mid, 1),
-        round(P_cond, 1),
-    })
-    for j, P_kPa in enumerate(P_choice):
-        s_iso, T_iso = _isobar_in_Ts(fluid, P_kPa)
-        if len(s_iso) > 2:
-            fig.add_trace(go.Scatter(
-                x=s_iso, y=T_iso, mode="lines",
-                line=dict(color="rgba(150,150,150,0.6)",
-                          width=1, dash="dot"),
-                name=f"P = {P_kPa:.0f} kPa",
-                hoverinfo="skip",
-                showlegend=True,
-            ))
-
-    # ---- Cycle: Low side (blue) ----
     low_order = [11, 1, 2, 3, 4, 5]
     s_low = [states[i]["s"] for i in low_order]
     T_low = [states[i]["T_C"] for i in low_order]
+    text_low = [f"{i}" for i in low_order]
+    hover_low = [
+        f"<b>State {i}</b> ({states[i]['label']})<br>"
+        f"T={states[i]['T_C']:.2f}°C<br>"
+        f"s={states[i]['s']:.4f} kJ/kg·K"
+        for i in low_order
+    ]
     fig.add_trace(go.Scatter(
-        x=s_low, y=T_low, mode="lines",
+        x=s_low, y=T_low, mode="lines+markers+text",
+        text=text_low, textposition="top center",
+        marker=dict(size=10, color="blue"),
         line=dict(color="blue", width=2.5),
-        name="Low side", hoverinfo="skip"
+        name="Low side", hovertext=hover_low, hoverinfo="text"
     ))
 
-    # ---- Cycle: High side (red) ----
     high_order = [6, 7, 8, 9, 10]
     s_high = [states[i]["s"] for i in high_order]
     T_high = [states[i]["T_C"] for i in high_order]
+    text_high = [f"{i}" for i in high_order]
+    hover_high = [
+        f"<b>State {i}</b> ({states[i]['label']})<br>"
+        f"T={states[i]['T_C']:.2f}°C<br>"
+        f"s={states[i]['s']:.4f} kJ/kg·K"
+        for i in high_order
+    ]
     fig.add_trace(go.Scatter(
-        x=s_high, y=T_high, mode="lines",
+        x=s_high, y=T_high, mode="lines+markers+text",
+        text=text_high, textposition="top center",
+        marker=dict(size=10, color="red", symbol="square"),
         line=dict(color="red", width=2.5),
-        name="High side", hoverinfo="skip"
+        name="High side", hovertext=hover_high, hoverinfo="text"
     ))
 
-    # Interfaces
     fig.add_trace(go.Scatter(
         x=[states[5]["s"], states[6]["s"]],
         y=[states[5]["T_C"], states[6]["T_C"]],
-        mode="lines",
-        line=dict(color="green", width=2, dash="dash"),
-        name="5→6 interface", hoverinfo="skip"
+        mode="lines", line=dict(color="green", width=2, dash="dash"),
+        name="5→6 interface"
     ))
     fig.add_trace(go.Scatter(
         x=[states[10]["s"], states[11]["s"]],
         y=[states[10]["T_C"], states[11]["T_C"]],
-        mode="lines",
-        line=dict(color="purple", width=2, dash="dash"),
-        name="10→11 (EV-2)", hoverinfo="skip"
+        mode="lines", line=dict(color="purple", width=2, dash="dash"),
+        name="10→11 (EV-2)"
     ))
-
-    # ---- State markers ----
-    for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
-        _add_state_marker(fig, states[i]["s"], states[i]["T_C"],
-                          i, _state_hover(states, i))
-
-    # ---- Critical Point ----
-    if s_crit is not None:
-        fig.add_trace(go.Scatter(
-            x=[s_crit], y=[T_crit_C], mode="markers+text",
-            marker=dict(size=14, color="darkviolet", symbol="star",
-                        line=dict(color="black", width=1.5)),
-            text=["<b>CP</b>"], textposition="top right",
-            textfont=dict(size=12, color="darkviolet"),
-            name="Critical Point",
-            hovertext=(f"<b>Critical Point</b><br>"
-                       f"T = {T_crit_C:.2f} °C<br>"
-                       f"P = {P_crit:.1f} kPa<br>"
-                       f"s ≈ {s_crit:.4f} kJ/kg·K"),
-            hoverinfo="text"
-        ))
 
     fig.update_layout(
         title=f"T-s Diagram — {result['fluid']} | COP = {result['COP']:.2f}",
@@ -372,14 +198,7 @@ def plot_ts_diagram(result):
         yaxis_title="Temperature T [°C]",
         hovermode="closest",
         template="plotly_white",
-        height=600,
-        legend=dict(
-            yanchor="top", y=0.99,
-            xanchor="left", x=1.02,
-            bgcolor="rgba(255,255,255,0.85)",
-            bordercolor="gray", borderwidth=1,
-            font=dict(size=10)
-        ),
+        height=550,
     )
     return fig
 import plotly.graph_objects as go
@@ -414,10 +233,10 @@ def plot_pid(result):
                     source=img,
                     xref="x",
                     yref="y",
-                    x=10,
+                    x=0,
                     y=100,       # เริ่มต้นมุมซ้ายบนของแกนพล็อต
                     sizex=100,
-                    sizey=80,   # กางเต็มพื้นที่ 100x100
+                    sizey=100,   # กางเต็มพื้นที่ 100x100
                     sizing="stretch",
                     opacity=1.0,
                     layer="below" # อยู่ใต้ข้อความและมาร์กเกอร์ทั้งหมด
@@ -458,46 +277,31 @@ def plot_pid(result):
         )
 
     # =========================================================================
-    # 3. ปักหมุดกล่องข้อมูลสด (Live Data Boxes) ตามพิกัดภาพล่าสุด
+    # 3. ปักหมุดกล่องข้อมูลสด (Live Data Boxes) ทับลงบนกล่อง FIC/TIC/PIC ในรูป
     # =========================================================================
+    # หมายเหตุ: ภาพ P&ID มี State 1-11 อยู่แล้ว จึงไม่ต้องวาดทับ
     if ctrl is not None:
-        # กล่อง FIC-101 (Flash Ratio Valve) -> วางมุมซ้ายล่าง ใกล้ๆ วาล์ว V-101 ตัวแรก
+        # กล่อง FIC-101 (Flash Ratio Valve) -> ทับกล่องสีเหลือง FIC-101 ในรูป (ซ้ายบน)
         fic_text = f"<b>FIC-101 (EV-1)</b><br>SP: {ctrl['FIC']['SP']:.3f}<br>PV: {ctrl['FIC']['PV']:.3f}<br>OUT: {ctrl['FIC']['output']:.0f}%"
-        add_live_box(x=20, y=20, text=fic_text, border_color="#43a047", bg_color="rgba(244, 249, 244, 0.95)")
+        add_live_box(x=10, y=73, text=fic_text, border_color="#f9a825", bg_color="rgba(255, 249, 220, 0.95)")
 
-        # กล่อง TIC-101 (Evaporator Temp) -> วางด้านล่างแถวๆ Expansion Valve ตัวที่สอง V-102
+        # กล่อง TIC-101 (Evaporator Temp) -> ทับกล่องสีชมพู TIC-101 ในรูป (กลางล่าง)
         tic_text = f"<b>TIC-101 (EV-2)</b><br>SP: {ctrl['TIC']['SP']:.1f}°C<br>PV: {ctrl['TIC']['PV']:.1f}<br>OUT: {ctrl['TIC']['output']:.0f}%"
-        add_live_box(x=45, y=20, text=tic_text, border_color="#ef5350", bg_color="rgba(255, 248, 248, 0.95)")
+        add_live_box(x=31, y=35, text=tic_text, border_color="#ef5350", bg_color="rgba(255, 235, 238, 0.95)")
 
-        # กล่อง PIC-101 (Condenser Press) -> วางมุมขวาบน ใกล้ๆ Compressor มอเตอร์ความดันสูง K-102
+        # กล่อง PIC-101 (Condenser Press) -> ทับกล่องสีฟ้า PIC-101 ในรูป (ขวาบน)
         pic_text = f"<b>PIC-101 (K-102)</b><br>SP: {ctrl['PIC']['SP']:.0f} kPa<br>PV: {ctrl['PIC']['PV']:.0f}<br>OUT: {ctrl['PIC']['output']:.0f}%"
-        add_live_box(x=83, y=90, text=pic_text, border_color="#1e88e5")
+        add_live_box(x=89, y=72, text=pic_text, border_color="#1e88e5", bg_color="rgba(220, 237, 250, 0.95)")
 
     # --- เซ็นเซอร์วัดค่าหน้างาน (Local Indicators) ---
-    # TI-102: ไออุณหภูมิสูงก่อนเข้าคอยล์คอนเดนเซอร์ (State 7)
-    add_live_box(x=83, y=63, text=f"<b>TI-102 (T7)</b><br>{states[7]['T_C']:.1f}°C", border_color="grey")
+    # TT-101: อุณหภูมิที่ออกจาก Evaporator (State 1) - ทับวงกลม TT-101 สีชมพูในรูป
+    add_live_box(x=80, y=22, text=f"<b>TT-101</b><br>{states[1]['T_C']:.1f}°C", border_color="#ec407a", bg_color="rgba(252, 228, 236, 0.95)")
     
-    # PI-102: ความดันไอเรนจ์กลาง ตรงท่อออกจาก Mixing Chamber (State 6)
-    add_live_box(x=50, y=58, text=f"<b>PI-102 (P_mid)</b><br>{states[6]['P_kPa']:.0f} kPa", border_color="grey")
+    # PT-101: ความดันก่อนเข้า Condenser (State 7) - ทับวงกลม PT-101 สีฟ้าในรูป
+    add_live_box(x=72, y=82, text=f"<b>PT-101</b><br>{states[7]['P_kPa']:.0f} kPa", border_color="#42a5f5", bg_color="rgba(225, 245, 254, 0.95)")
     
-    # TI-103: อุณหภูมิไอซูเปอร์ฮีต ออกจาก Evaporator ตัวล่าง (State 1)
-    add_live_box(x=73, y=26, text=f"<b>TI-103 (T1)</b><br>{states[1]['T_C']:.1f}°C", border_color="grey")
-
-    # =========================================================================
-    # 4. ปักหมุดสัญลักษณ์เลขสถานะน้ำยา (State Markers 1 - 11) ตรงจุดท่อทางไหลจริง
-    # =========================================================================
-    # [อ้างอิงตำแหน่งท่อเชื่อมต่อจากรูปภาพสเปกโครงสร้างระบบล่าสุดของคุณ]
-    add_state_label(x=23, y=77, num=7)   # ท่อออกจากคอม 2 (K-102) ด้านบนขวาวิ่งเลี้ยวซ้ายยาวไปเข้า Condenser
-    add_state_label(x=46, y=77, num=8)   # ท่อของเหลวออกจาก Condenser (E-101) ด้านขวา วิ่งมาทางขวา
-    add_state_label(x=18, y=62, num=9)   # หลังผ่านวาล์วลดความดันตัวแรก ฉีดเข้ากลางถัง Flash Tank
-    add_state_label(x=38, y=67, num=6)   # ท่อไออิ่มตัวออกจากส่วนหัวด้านบนของถัง Flash Tank เลี้ยวไปทางขวา
-    add_state_label(x=18, y=43, num=10)  # ท่อของเหลวออกจากก้นถัง Flash Tank ดิ่งลงล่าง
-    add_state_label(x=31, y=14, num=11)  # สารทำความเย็นผ่านวาล์วลดความดันตัวที่สอง (EV-2) วิ่งเข้า Evaporator
-    add_state_label(x=61, y=14, num=1)   # ไอความดันต่ำออกจากขวาคอยล์เย็น Evaporator วิ่งเข้าคอมตัวล่าง K-101
-    add_state_label(x=77, y=49, num=2)   # ท่อออกจากคอมตัวแรก Low-Stage (K-101) วิ่งขึ้นบนเข้าหา Intercooler
-    add_state_label(x=59, y=67, num=3)   # ท่อออกจาก Intercooler (E-102) ทิศทางวิ่งลงมาหาจุดผสม
-    add_state_label(x=50, y=49, num=4)   # ท่อไอผสมด้านเข้าของ Mixing Chamber (M-101)
-    add_state_label(x=68, y=58, num=5)   # น้ำยาที่ผสมได้สัดส่วนสมบูรณ์แล้ว วิ่งออกจาก Mixing Chamber ขึ้นไปเข้าคอม 2
+    # FT-101: อัตราการไหลของเหลวออกจาก Flash Tank (State 10) - ทับวงกลม FT-101 สีเหลืองในรูป
+    add_live_box(x=11, y=21, text=f"<b>FT-101</b><br>T={states[10]['T_C']:.1f}°C", border_color="#f9a825", bg_color="rgba(255, 249, 220, 0.95)")
 
     # =========================================================================
     # 5. การตั้งค่าหน้าแคนวาสพล็อต (Canvas Layout)
