@@ -224,7 +224,7 @@ def plot_pid(result):
     # 1. การโหลดรูปภาพมาทำเป็น Background
     # =========================================================================
     # ใช้ absolute path เทียบจากตำแหน่งของ plots.py เพื่อให้ทำงานได้บน Streamlit Cloud
-    img_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "def.jpg")
+    img_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "abc.png")
     
     if os.path.exists(img_filename):
         try:
@@ -307,14 +307,20 @@ def plot_pid(result):
     # =========================================================================
     # 5. การตั้งค่าหน้าแคนวาสพล็อต (Canvas Layout)
     # =========================================================================
+    # รูปต้นฉบับมีอัตราส่วน ~1.414:1 (กว้าง:สูง) จึงต้องตั้ง width/height ของ figure
+    # ให้ตรงกับสัดส่วนนี้ และไม่ใช้ scaleanchor (ไม่งั้นรูปจะถูกบีบให้เป็นสี่เหลี่ยมจัตุรัส)
     fig.update_layout(
         showlegend=False,
         template="plotly_white",
-        # ล็อกพิกัดแกนและซ่อนสเกล Grid ทั้งหมดเพื่อให้แสดงผลภาพพื้นหลังได้เนียนตาที่สุด
-        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(range=[0, 100], showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x", scaleratio=1),
-        height=680,
-        margin=dict(l=5, r=5, t=50, b=5),
+        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False, 
+                   showticklabels=False, fixedrange=True),
+        yaxis=dict(range=[0, 100], showgrid=False, zeroline=False, 
+                   showticklabels=False, fixedrange=True),
+        height=600,
+        autosize=True,
+        margin=dict(l=5, r=5, t=20, b=5),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
     )
     
     return fig
