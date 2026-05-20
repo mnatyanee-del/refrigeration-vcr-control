@@ -39,6 +39,11 @@ with st.sidebar:
         with col2:
             dT_superheat = st.number_input("ΔT_superheat [K]", 0, 30, 5, step=1)
             eta_c2       = st.slider("η_C2 (High-Stage)", 0.50, 1.00, 0.85, step=0.01)
+        # โหลดความเย็น (ใช้คำนวณ mass flow rate จริง)
+        Q_cooling_kW = st.number_input(
+            "Cooling Capacity [kW]", 0.1, 1000.0, 10.0, step=0.5,
+            help="โหลดทำความเย็นที่ต้องการ — ใช้คำนวณ mass flow rate (kg/s) ที่ FT-101 อ่าน"
+        )
     st.markdown("""
         <style>
         /* ลูปอุณหภูมิ TIC - กรอบสีแดง/ส้มจางๆ */
@@ -132,6 +137,29 @@ except Exception as e:
     st.stop()
 
 # =========================================================================
+# Mass flow calculation จาก Cooling Capacity ที่ user กำหนด
+# =========================================================================
+# q_evap_per_kg [kJ/kg] = h1 - h11 (พลังงานทำความเย็นต่อมวลของเหลวที่ไป Evaporator)
+# m_dot_low [kg/s] = Q_cooling [kW] / q_evap_per_kg [kJ/kg]
+# m_dot_total = m_dot_low / (1 - y)   เพราะ low side คือ (1-y) ของ total
+h1  = result["states"][1]["h"]
+h11 = result["states"][11]["h"]
+q_evap_per_kg = h1 - h11  # kJ/kg
+y = result["y"]
+
+if q_evap_per_kg > 1e-3:
+    m_dot_low   = Q_cooling_kW / q_evap_per_kg              # kg/s — ผ่าน Evaporator
+    m_dot_total = m_dot_low / max(1e-6, (1.0 - y))          # kg/s — ผ่าน Condenser
+    m_dot_vap   = y * m_dot_total                           # kg/s — ไอจาก flash
+else:
+    m_dot_low = m_dot_total = m_dot_vap = 0.0
+
+result["Q_cooling_kW"] = Q_cooling_kW
+result["m_dot_low"]    = m_dot_low
+result["m_dot_total"]  = m_dot_total
+result["m_dot_vap"]    = m_dot_vap
+
+# =========================================================================
 # KPI styles + custom bar styles
 # =========================================================================
 st.markdown("""
@@ -215,12 +243,12 @@ st.markdown(f"""
             <div class="kpi-value">{result['Q_evap_total']:.1f} <span style='font-size:1rem; font-weight:normal; color:#666;'>kJ/kg</span></div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">🔥 Q_cond</div>
-            <div class="kpi-value">{result['Q_cond_total']:.1f} <span style='font-size:1rem; font-weight:normal; color:#666;'>kJ/kg</span></div>
+            <div class="kpi-title">💧 ṁ Low side</div>
+            <div class="kpi-value">{result['m_dot_low']:.3f} <span style='font-size:1rem; font-weight:normal; color:#666;'>kg/s</span></div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">💨 Vapor Frac (y)</div>
-            <div class="kpi-value">{result['y']:.3f}</div>
+            <div class="kpi-title">💧 ṁ Total</div>
+            <div class="kpi-value">{result['m_dot_total']:.3f} <span style='font-size:1rem; font-weight:normal; color:#666;'>kg/s</span></div>
         </div>
         <div class="kpi-card">
             <div class="kpi-title">⚖️ Energy Balance</div>
@@ -267,15 +295,16 @@ with tab1:
     col_pid, col_ind, col_ctrl = st.columns([3, 1, 1])
 
     with col_pid:
+        st.subheader("P&ID")
         st.plotly_chart(plot_pid(result), use_container_width=True)
 
     with col_ind:
         st.subheader("Sensor")
-        st.metric("TT-101 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
+        st.metric("TI-102 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("PT-101 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
+        st.metric("PI-102 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("FT-101 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
+        st.metric("TI-103 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
 
     # ---- %CO column with custom-colored progress bars ----
     with col_ctrl:
