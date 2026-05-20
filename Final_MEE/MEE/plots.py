@@ -464,10 +464,18 @@ def plot_pid(result):
                  border_color="#ec407a", bg_color="rgba(252, 228, 236, 0.95)")
     add_live_box(x=72, y=82, text=f"<b>PT-101</b><br>{states[7]['P_kPa']:.0f} kPa",
                  border_color="#42a5f5", bg_color="rgba(225, 245, 254, 0.95)")
-    # FT-101: Flow Transmitter — วัดอัตราการไหลของเหลวออกจาก Flash Tank
-    # ค่าที่แสดง = (1 - y) คือสัดส่วนมวลของเหลวที่ส่งไป EV-2 ต่อมวลรวม
-    flow_liquid_frac = 1.0 - result.get("y", 0.0)
-    add_live_box(x=11, y=21, text=f"<b>FT-101</b><br>{flow_liquid_frac:.3f} kg/kg",
+    # FT-101: Flow Transmitter — อัตราการไหลของเหลวออกจาก Flash Tank ไป Evaporator
+    # ค่าจริง: m_dot_low = Q_cooling / (h1 - h11)  [kg/s]
+    m_dot_low = result.get("m_dot_low", None)
+    if m_dot_low is not None and m_dot_low > 0:
+        if m_dot_low >= 1:
+            ft_value = f"{m_dot_low:.3f} kg/s"
+        else:
+            ft_value = f"{m_dot_low*1000:.1f} g/s"
+    else:
+        # fallback — แสดงสัดส่วนถ้าไม่มี Q_cooling
+        ft_value = f"{1.0 - result.get('y', 0.0):.3f} kg/kg"
+    add_live_box(x=11, y=21, text=f"<b>FT-101</b><br>{ft_value}",
                  border_color="#f9a825", bg_color="rgba(255, 249, 220, 0.95)")
 
     # =========================================================================
