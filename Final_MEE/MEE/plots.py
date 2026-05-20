@@ -223,7 +223,8 @@ def plot_pid(result):
     # =========================================================================
     # 1. การโหลดรูปภาพมาทำเป็น Background
     # =========================================================================
-    img_filename = "def.png" 
+    # ใช้ absolute path เทียบจากตำแหน่งของ plots.py เพื่อให้ทำงานได้บน Streamlit Cloud
+    img_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "abc.png")
     
     if os.path.exists(img_filename):
         try:
