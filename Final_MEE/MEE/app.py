@@ -300,11 +300,51 @@ with tab1:
 
     with col_ind:
         st.subheader("Sensor")
-        st.metric("TI-102 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
+
+        # ─────────────────────────────────────────────────────────────
+        # TT-101 — Temperature Transmitter
+        # ตำแหน่ง: ท่อออกจาก Evaporator (State 1)
+        # ส่งสัญญาณ → TIC-101 → ควบคุม V-102 (EV-2)
+        # ─────────────────────────────────────────────────────────────
+        st.metric(
+            label="🌡️ TT-101",
+            value=f"{result['states'][1]['T_C']:.2f} °C",
+            help="Temperature Transmitter ที่ออกจาก Evaporator (State 1) → ส่งให้ TIC-101"
+        )
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("PI-102 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
+
+        # ─────────────────────────────────────────────────────────────
+        # PT-101 — Pressure Transmitter
+        # ตำแหน่ง: ท่อก่อนเข้า Condenser (State 7)
+        # ส่งสัญญาณ → PIC-101 → ควบคุม K-102 (High-Stage Compressor)
+        # ─────────────────────────────────────────────────────────────
+        st.metric(
+            label="📊 PT-101",
+            value=f"{result['states'][7]['P_kPa']:.0f} kPa",
+            help="Pressure Transmitter ก่อนเข้า Condenser (State 7) → ส่งให้ PIC-101"
+        )
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("TI-103 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
+
+        # ─────────────────────────────────────────────────────────────
+        # FT-101 — Flow Transmitter (วัด mass flow จริง)
+        # ตำแหน่ง: ท่อออกจากก้น Flash Tank → EV-2 (State 10 → 11)
+        # ส่งสัญญาณ → FIC-101 → ควบคุม V-101 (EV-1)
+        # ─────────────────────────────────────────────────────────────
+        m_dot_low = result.get("m_dot_low", 0.0)
+        if m_dot_low >= 1.0:
+            ft_value   = f"{m_dot_low:.3f} kg/s"
+            ft_subunit = ""
+        else:
+            ft_value   = f"{m_dot_low*1000:.1f} g/s"
+            ft_subunit = f"= {m_dot_low:.4f} kg/s"
+
+        st.metric(
+            label="💧 FT-101",
+            value=ft_value,
+            delta=ft_subunit if ft_subunit else None,
+            delta_color="off",
+            help="Flow Transmitter ที่ก้น Flash Tank → ส่งให้ FIC-101 (อัตราไหลของเหลวไป Evaporator)"
+        )
 
     # ---- %CO column with custom-colored progress bars ----
     with col_ctrl:
