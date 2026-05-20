@@ -271,11 +271,11 @@ with tab1:
 
     with col_ind:
         st.subheader("Sensor")
-        st.metric("TI-102 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
+        st.metric("TT-101 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("PI-102 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
+        st.metric("PT-101 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("TI-103 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
+        st.metric("FT-101 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
 
     # ---- %CO column with custom-colored progress bars ----
     with col_ctrl:
