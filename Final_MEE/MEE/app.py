@@ -269,7 +269,6 @@ with tab1:
 
     # 1. ซ้ายสุด (สัดส่วน 2): แสดง P&ID ที่ย้ายมาจากแท็บ 2
     with col_pid:
-        st.subheader("P&ID")
         st.plotly_chart(plot_pid(result), use_container_width=True)
 
     # 2. ตรงกลาง (สัดส่วน 1): Indicators (read-only) เรียงลงมาในแนวตั้ง
