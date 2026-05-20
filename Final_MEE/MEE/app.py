@@ -60,24 +60,19 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     # เพื่อให้ปุ่ม Reset/Random ทำงานผ่าน st.session_state ได้อย่างถูกต้อง
-    # เราจะตั้งค่า default key ไว้ล่วงหน้าหากยังไม่มีในระบบ
     if "dist_T" not in st.session_state: st.session_state.dist_T = 0.0
     if "dist_P" not in st.session_state: st.session_state.dist_P = 0
     if "dist_y" not in st.session_state: st.session_state.dist_y = 0.0
 
-    # 2. กลุ่มลูปอุณหภูมิ TIC-101
     with st.container(border=True):
         st.markdown("<h4 style='margin:0;color:#c62828;'>TIC-101</h4>", unsafe_allow_html=True)
-        
         sub_col1, sub_col2 = st.columns([1, 1])
         with sub_col1:
             st.markdown("**Setpoint**")
             T_evap_set = st.number_input("T_evap [°C]", -40, 20, -10, step=1, key="input_tic_sp")
         with sub_col2:
             st.markdown("**Disturbance**")
-            # เปลี่ยนจาก Slider เป็น number_input ความละเอียดทศนิยม 1 ตำแหน่ง
             dist_T = st.number_input("ΔT_evap [°C]", -5.0, 5.0, step=0.1)
-    # 3. กลุ่มลูปความดัน PIC-101
     with st.container(border=True):
         st.markdown("<h4 style='margin:0;color:#1e88e5;'>PIC-101</h4>", unsafe_allow_html=True)
         sub_col3, sub_col4 = st.columns([1, 1])
@@ -86,11 +81,8 @@ with st.sidebar:
             P_cond_set = st.number_input("P_cond [kPa]", 200, 3000, 1000, step=25)
         with sub_col4:
             st.markdown("**Disturbance**")
-            dist_P = st.number_input(
-            "ΔP_cond [kPa]", -200, 200, )
-        
+            dist_P = st.number_input("ΔP_cond [kPa]", -200, 200, )
 
-    # 4. กลุ่มลูปสัดส่วนมวลไอ FIC-101
     with st.container(border=True):
         st.markdown("<h4 style='margin:0;color:#43a047;'>FIC-101</h4>", unsafe_allow_html=True)
         sub_col5, sub_col6 = st.columns([1, 1])
@@ -101,18 +93,15 @@ with st.sidebar:
             st.markdown("**Disturbance**")
             dist_y = st.number_input("Δy disturbance [-]", -0.05, 0.05, )
 
-    # 5. กลุ่มปุ่มคำสั่งด่วน (Quick Actions)
     st.divider()
     st.markdown("🛠️ **Quick Simulation Actions**")
     col_btn1, col_btn2 = st.columns(2)
-    
     with col_btn1:
         if st.button("⇄ Clear Disturb", use_container_width=True, help="ล้างค่ารบกวนให้เป็น 0 ทั้งหมด"):
             st.session_state.dist_T = 0.0
             st.session_state.dist_P = 0
             st.session_state.dist_y = 0.0
             st.rerun()
-
     with col_btn2:
         if st.button("⚠️ Inject Random", use_container_width=True, help="สุ่มค่า Disturbance เพื่อทดสอบคอนโทรลเลอร์"):
             st.session_state.dist_T = float(np.random.uniform(-3, 3))
@@ -120,7 +109,6 @@ with st.sidebar:
             st.session_state.dist_y = float(np.random.uniform(-0.03, 0.03))
             st.rerun()
 
-# บรรทัดคำนวณด้านล่างปล่อยไว้ตามเดิม (ดึงค่ามาจากตัวแปรที่ผูกกับ slider)
 T_evap_actual = T_evap_set + dist_T
 P_cond_actual = P_cond_set + dist_P
 y_actual      = max(0.005, y_set + dist_y)
@@ -144,12 +132,8 @@ except Exception as e:
     st.stop()
 
 # =========================================================================
-# Top KPI row
+# KPI styles + custom bar styles
 # =========================================================================
-# =========================================================================
-# Top KPI row (Custom Designed Cards)
-# =========================================================================
-# แทรก CSS สไตล์สำหรับสร้างกล่องการ์ดให้มีมิติ เงา และขอบมน
 st.markdown("""
     <style>
     .kpi-container {
@@ -179,7 +163,6 @@ st.markdown("""
         color: #111111;
         font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
     }
-    /* ไฮไลท์สีพิเศษเฉพาะกล่อง COP เพื่อให้เด่นชัด */
     .cop-card {
         border-left: 5px solid #1e88e5 !important;
         background-color: #f7faff;
@@ -187,10 +170,29 @@ st.markdown("""
     .cop-value {
         color: #1565c0;
     }
+
+    /* Custom colored progress bars (for %CO output) */
+    .co-bar-wrap {
+        background-color: #eeeeee;
+        border-radius: 6px;
+        height: 14px;
+        width: 100%;
+        overflow: hidden;
+        margin-top: 4px;
+        margin-bottom: 14px;
+        border: 1px solid #d0d0d0;
+    }
+    .co-bar-fill {
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.3s ease;
+    }
+    .co-bar-tic  { background: linear-gradient(90deg, #ef5350, #c62828); }
+    .co-bar-pic  { background: linear-gradient(90deg, #42a5f5, #1565c0); }
+    .co-bar-fic  { background: linear-gradient(90deg, #66bb6a, #2e7d32); }
     </style>
 """, unsafe_allow_html=True)
 
-# ดึงข้อมูลมาเตรียมใส่การ์ด
 bal = result["energy_balance"]
 bal_status_html = ""
 if abs(bal) < 0.5:
@@ -198,7 +200,6 @@ if abs(bal) < 0.5:
 else:
     bal_status_html = f"<span style='color:#c62828; font-weight:bold;'>⚠ OFF (Δ={bal:.4f})</span>"
 
-# สร้างแถวข้อมูลงามๆ ด้วย HTML Flexbox Component
 st.markdown(f"""
     <div class="kpi-container">
         <div class="kpi-card cop-card">
@@ -228,7 +229,6 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# เคลียร์พิกัดด้านล่างเพื่อให้หน้าต่างถัดไปไม่ติดขัด
 st.write("")
 # =========================================================================
 # Tabs
@@ -264,49 +264,50 @@ with tab1:
          "Status": ctrl["FIC"]["status"]},
     ])
 
-    # ปรับเป็น 3 คอลัมน์ สัดส่วน 2:1:1
     col_pid, col_ind, col_ctrl = st.columns([3, 1, 1])
 
-    # 1. ซ้ายสุด (สัดส่วน 2): แสดง P&ID ที่ย้ายมาจากแท็บ 2
     with col_pid:
         st.plotly_chart(plot_pid(result), use_container_width=True)
 
-    # 2. ตรงกลาง (สัดส่วน 1): Indicators (read-only) เรียงลงมาในแนวตั้ง
     with col_ind:
         st.subheader("Sensor")
-        
         st.metric("TI-102 (T discharge K-101)", f"{result['states'][7]['T_C']:.2f} °C")
-        st.markdown("<br>", unsafe_allow_html=True) # เพิ่มช่องว่างช่วยเว้นระยะแนวตั้งให้สวยงาม
-        
+        st.markdown("<br>", unsafe_allow_html=True)
         st.metric("PI-102 (P at flash tank)", f"{result['states'][6]['P_kPa']:.0f} kPa")
         st.markdown("<br>", unsafe_allow_html=True)
-        
         st.metric("TI-103 (T Comp 1 inlet)", f"{result['states'][1]['T_C']:.2f} °C")
 
-    # 3. ขวาสุด (สัดส่วน 1): Controller bargraphs เรียงลงมาในแนวตั้ง
+    # ---- %CO column with custom-colored progress bars ----
     with col_ctrl:
         st.subheader("%CO")
-        
-        for key in ["TIC", "PIC", "FIC"]:
+
+        # mapping ของแต่ละลูป: (tag, error, output, css class สำหรับสีบาร์)
+        bar_specs = [
+            ("TIC", "co-bar-tic"),   # แดง
+            ("PIC", "co-bar-pic"),   # น้ำเงิน
+            ("FIC", "co-bar-fic"),   # เขียว
+        ]
+        for key, bar_class in bar_specs:
             out = ctrl[key]["output"]
+            err = ctrl[key]["err"]
+            tag = ctrl[key]["tag"]
+
             st.metric(
-                f"{ctrl[key]['tag']} output", 
+                f"{tag} output",
                 f"{out:.1f} %",
-                delta=f"err = {ctrl[key]['err']:+.3f}"
+                delta=f"err = {err:+.3f}"
             )
-            st.progress(out / 100)
-            st.markdown("<br>", unsafe_allow_html=True) # เว้นระยะระหว่างบล็อกคอนโทรลเลอร์
+            # แสดงบาร์สีแบบกำหนดเอง แทน st.progress() ที่เปลี่ยนสีไม่ได้
+            width_pct = max(0, min(100, out))
+            st.markdown(
+                f"""
+                <div class="co-bar-wrap">
+                    <div class="co-bar-fill {bar_class}" style="width:{width_pct}%;"></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-
-    ##st.markdown("""
-    ### 📘 Control Philosophy
-    
-    ##| Loop | Action | Formula | Direction |
-    ##|------|--------|---------|-----------|
-    ##| **TIC-101** | Direct | `Output = 50 - 10·Error` | T high → open V-102 |
-    ##| **PIC-101** | Reverse | `Output = 80 + 0.05·Error` | P high → slow K-101 |
-    ##| **FIC-101** | Reverse | `Output = 50 + 200·Error` | y high → close V-101 |
-   ## """)
 # =========================================================================
 # TAB 2 — Summary
 # =========================================================================
@@ -338,12 +339,10 @@ with tab2:
         })
     col1, col2 = st.columns(2)
 
-# 2. นำกราฟแรก (P-h Diagram) ไปใส่ในคอลัมน์ซ้าย (col1)
     with col1:
         st.subheader("📊 P-h Diagram")
         st.plotly_chart(plot_ph_diagram(result), use_container_width=True)
 
-# 3. นำกราฟที่สอง (เช่น กราฟ P&ID หรือ กราฟ T-s) ไปใส่ในคอลัมน์ขวา (col2)
     with col2:
         st.subheader("📊 T-s Diagram")
         st.plotly_chart(plot_ts_diagram(result), use_container_width=True)
@@ -358,7 +357,6 @@ with tab2:
     ```
     """)
 
-    # Export CSV
     csv_data = pd.DataFrame(rows).to_csv(index=False)
     st.download_button(
         "💾 Download Summary as CSV",
